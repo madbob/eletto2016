@@ -13,6 +13,14 @@
     <![endif]-->
     
     <style>
+      #lists li {
+        list-style: none;
+      }
+      
+      .nav-tabs {
+        margin-bottom: 20px;
+      }
+
       li img {
         width: 20px;
       }
@@ -60,17 +68,26 @@
             <div class="panel-body">
               <ul class="nav nav-tabs" role="tablist">
                 <li role="presentation" class="active"><a href="#lists" aria-controls="home" role="tab" data-toggle="tab">Liste</a></li>
-                <li role="presentation"><a href="#majors" aria-controls="profile" role="tab" data-toggle="tab">Sindaci</a></li>
               </ul>
-              <br/>
               <div class="tab-content">
                 <div role="tabpanel" class="tab-pane active" id="lists">
-                  <ul id="list">
+                  <ul class="nav nav-tabs" role="tablist">
+                    <li role="presentation" class="active"><a href="#listsrelative" aria-controls="profile" role="tab" data-toggle="tab">Distribuzione Relativa</a></li>
+                    <li role="presentation"><a href="#listsabsolute" aria-controls="home" role="tab" data-toggle="tab">Distribuzione Assoluta</a></li>
                   </ul>
-                </div>
-                <div role="tabpanel" class="tab-pane" id="majors">
-                  <ul id="major">
-                  </ul>
+                  <div class="tab-content">
+                    <div role="tabpanel" class="tab-pane active" id="listsrelative">
+                      <ul>
+                      </ul>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="listsabsolute">
+                      <ul class="selected">
+                      </ul>
+                      <hr/>
+                      <ul class="unselected">
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -143,9 +160,12 @@
                 presentando la distribuzione dei voti raccolti dalle singole liste e dai candidati sindaci divisi per circoscrizioni.
               </p>
               <p>
-                I dati sono aggregati in modo relativo per lista o sindaco; l'omogeneità delle tonalità di colore rispecchia
-                l'omogeneità nella distribuzione per quel singolo elemento.
+                I dati sono aggregati in diversi modi:
               </p>
+              <ul>
+                <li>relativo: l'omogeneità delle tonalità di colore rispecchia l'omogeneità nella distribuzione per quel singolo elemento</li>
+                <li>assoluto: l'omogeneità delle tonalità di colore rispecchia la distribuzione per un elemento rispetto agli altri selezionati</li>
+              </ul>
               <p>
                 Le informazioni in formato CSV sono state tratte da <a href="http://www.comune.torino.it/elezioni/2016/amministrative/">questa pagina</a>.
               </p>
@@ -163,64 +183,96 @@
     
     <script>
       var lists;
-      var majors;
+      var master;
+      var maximum = [0, 0, 0, 0, 0, 0, 0, 0];
+
+      function calculateMaximum() {
+        maximum = [0, 0, 0, 0, 0, 0, 0, 0];
+
+        $('#listsabsolute .selected :checked').each(function() {
+          var c = $(this).closest('li').attr('data-name');
+          for(var i = 0; i < 8; i++)
+            maximum[i] += parseInt(lists[c].votes[i + 1]);
+        });
+      }
 
       $(document).ready(function() {
         $.getJSON('liste.json', function(data) {
           lists = data;
-          var list = $('#list');
+
+          var listsabsolute = $('#listsabsolute .unselected');
+          var listsrelative = $('#listsrelative ul');
 
           for (var property in data) {
             if (data.hasOwnProperty(property)) {
-              if (data[property].icon == '')
+              if (data[property].icon == '') {
+                master = data[property];
                 continue;
-                
-              var li = $('<li><img src="simboli/' + data[property].icon + '"><span>' + property + '</span></li>');
+              }
+              
+              var liab = $('<li data-name="' + property + '"><input type="checkbox"> <img src="simboli/' + data[property].icon + '"><span>' + property + '</span></li>');
 
-              li.hover(function() {
+              liab.hover(function() {
+                if ($(':checked', this).length == 0)
+                  return;
+
                 $(this).addClass('active');
                 var index = $(this).find('span').text();
                 var data = lists[index];
                 
-                for (var property in data.shade_relative) {
-                  if (data.shade_relative.hasOwnProperty(property)) {
-                    $('svg #' + property + ' path').css('fill', 'rgba(' + (255 - data.shade_relative[property]) + ', ' + data.shade_relative[property] + ', 0, 1)');
-                  }
+                for (var i = 0; i < 8; i++) {
+                  var factor = Math.round((data.votes[i + 1] * 255) / maximum[i]);
+                  $('svg #' + (i + 1) + ' path').css('fill', 'rgba(' + (255 - factor) + ', ' + factor + ', 0, 1)');
                 }
+
               }, function() {
                 $(this).removeClass('active');
               });
 
-              list.append(li);
+              listsabsolute.append(liab);
+              
+              var lire = $('<li><img src="simboli/' + data[property].icon + '"><span>' + property + '</span></li>');
+
+              lire.hover(function() {
+                $(this).addClass('active');
+                var index = $(this).find('span').text();
+                var data = lists[index];
+                var min_factor = 99999999;
+                var max_votes = 0;
+
+                for (var i = 1; i < 9; i++) {
+                  var factor = master.votes[i] / data.votes[i];
+                  if (factor < min_factor) {
+                    min_factor = factor;
+                    max_votes = data.votes[i];
+                  }
+                }
+
+                for (var i = 1; i < 9; i++) {
+                  var factor = Math.round((data.votes[i] * 255) / max_votes);
+                  $('svg #' + i + ' path').css('fill', 'rgba(' + (255 - factor) + ', ' + factor + ', 0, 1)');
+                }
+
+              }, function() {
+                $(this).removeClass('active');
+              });
+
+              listsrelative.append(lire);
             }
           }
+          
+          $('#lists li[data-name="PARTITO DEMOCRATICO"] input:checkbox').click();
+          $('#lists li[data-name="MOVIMENTO5STELLE.IT"] input:checkbox').click();
         });
         
-        $.getJSON('sindaci.json', function(data) {
-          majors = data;
-          var list = $('#major');
+        $('#listsabsolute').on('change', 'li input:checkbox', function() {
+          var row = $(this).closest('li');
+          if ($(this).prop('checked'))
+            row.appendTo('#listsabsolute .selected');
+          else
+            row.appendTo('#listsabsolute .unselected');
 
-          for (var property in data) {
-            if (data.hasOwnProperty(property)) {
-              var li = $('<li><span>' + property + '</span></li>');
-
-              li.hover(function() {
-                $(this).addClass('active');
-                var index = $(this).text();
-                var data = majors[index];
-                
-                for (var property in data.shade_relative) {
-                  if (data.shade_relative.hasOwnProperty(property)) {
-                    $('svg #' + property + ' path').css('fill', 'rgba(' + (255 - data.shade_relative[property]) + ', ' + data.shade_relative[property] + ', 0, 1)');
-                  }
-                }
-              }, function() {
-                $(this).removeClass('active');
-              });
-
-              list.append(li);
-            }
-          }
+          calculateMaximum();
         });
       });
     </script>
